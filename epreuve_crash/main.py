@@ -9,43 +9,86 @@ import re
 sURL = 'https://www.passetonhack.fr/api/storage/challenges/19b86d6b326101548c9f0a70e7411423/intercepted_data.txt'
 response = requests.get(sURL)
 
-
-# Fonction pour tester si la chaîne est en base64
-def decode_data(data):
+def decode_ASCII(sVar):
+    """Décodage ASCII"""
     try:
-        # Tentative de décodage Base64
-        decoded_data = base64.b64decode(data).decode('utf-8')
-        return decoded_data
-    except (base64.binascii.Error, UnicodeDecodeError):
+        return sVar.encode('ascii').decode('ascii')
+    except UnicodeDecodeError:
         return None
 
-# Traitement des lignes dans les journaux
+def decode_Base58(sVar):
+    """Décodage Base58"""
+    try:
+        return base58.b58decode(sVar).decode('ascii')
+    except Exception:
+        return None
+
+def decode_Base64(sVar):
+    """Décodage Base64"""
+    try:
+        return base64.b64decode(sVar).decode('ascii')
+    except Exception:
+        return None
+
+def decode_Hex(sVar):
+    """Décodage Hexadecimal"""
+    try:
+        return binascii.unhexlify(sVar).decode('ascii')
+    except Exception:
+        return None
+
+def decode_URL(sVar):
+    """Décodage URL (pour les chaînes avec des % comme %2F, %2B...)"""
+    try:
+        return urllib.parse.unquote(sVar)
+    except Exception:
+        return None
+
+def try_decode(sVar):
+    """Essaye plusieurs méthodes de décodage"""
+    decoded = decode_URL(sVar)
+    if decoded:
+        return decoded
+    
+    decoded = decode_ASCII(sVar)
+    if decoded:
+        return decoded
+    
+    decoded = decode_Base58(sVar)
+    if decoded:
+        return decoded
+    
+    decoded = decode_Base64(sVar)
+    if decoded:
+        return decoded
+    
+    decoded = decode_Hex(sVar)
+    if decoded:
+        return decoded
+    
+    return None
 
 tExtraction = []
 for sLine in response.text.split("\n"):
     tMatches = re.findall(r"arg\d=([^&\s]+)", sLine)
 
-    if len(tMatches) > 1:
-        sMatch = ""
-        for sLineMatch in tMatches:
-            sDecodedURL = urllib.parse.unquote(sLineMatch)
+    if tMatches: 
+        if len(tMatches) > 1:
+            sMatch = ""
+            for sLineMatch in tMatches:
+                sMatch += try_decode(sLineMatch)
 
-           # decoded_data = decode_data(sDecodedURL)
+            if sMatch:
+                tExtraction.append(sMatch)
+        else:
+            decoded_data = try_decode(tMatches[0])
 
-            sMatch += sDecodedURL
-
-        if sMatch:
-            tExtraction.append(sMatch)
-    else:
-        sDecodedURL = urllib.parse.unquote(tMatches[0])
-        decoded_data = decode_data(sDecodedURL)
-
-        if decoded_data:
-            tExtraction.append(decoded_data)
-# 阗 䬙 㳳
-# 
+            if decoded_data:
+                tExtraction.append(decoded_data)
 
 if len(tExtraction) > 1:
     print("Les données extraites sont :")
-    for sData in tExtraction:
-        print(sData)
+
+    with open("output.txt", "w") as f:
+        for sData in tExtraction:
+            f.write(sData + "\n")
