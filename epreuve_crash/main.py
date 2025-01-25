@@ -1,74 +1,99 @@
-import base58
-import requests
 import base64
-from urllib.parse import unquote
-from itertools import zip_longest
+import requests
+import urllib.parse
 import re
+from itertools import zip_longest
 
 # URL des journaux
 sURL = 'https://www.passetonhack.fr/api/storage/challenges/19b86d6b326101548c9f0a70e7411423/intercepted_data.txt'
 response = requests.get(sURL)
 
-def cleanData(sLine):
-    sLine =  sLine.strip()
-    sLine = unquote(sLine)
+if response.status_code != 200:
+    print("Erreur lors de la récupération des données depuis l'URL.")
+    exit()
+
+# Nettoyage des données
+def clean_data(data):
+    """Nettoyer les données pour les rendre compatibles avec Base64."""
+
+    decoded_data = urllib.parse.unquote(data)  # Décoder les caractères URL
+
+    """
+        cleaned_data ; Caractères valides : A-Z, a-z, 0-9, +, /, =
+    
+    """
+
+    cleaned_data = re.sub(r"[^A-Za-z0-9+/=]", "", decoded_data)  # Supprimer les caractères non valides
+
+    return cleaned_data
+
+def fix_padding(data):
+    """Corriger le padding des données Base64 pour qu'elles soient multiples de 4."""
+    while len(data) % 4 != 0:
+        data += "="
+    return data
+
+tDataArg1, tDataArg2, tDataArg3 = [], [], []
+
+def beautifulLine(sLine):
     sLine = sLine.replace('192.112.220.111 - - ', "")
     sLine = sLine.replace(' "GET /payload?', "")
     sLine = re.sub(r"\[\d{2}/[A-Za-z]{3}/\d{4} \d{2}:\d{2}:\d{2}\]", "", sLine).strip()
     sLine = sLine.replace(' HTTP/1.1" 200 -', "")
 
-    # Delete arg{1,2,3}= from the string
-
     return sLine
 
-tData = {}
-for sLine in response.text.split("\n"):
-    sLine = cleanData(sLine)
+# Create file Args
+with open("args.txt", "w") as f1:
+    for line in response.text.split("\n"):
+        line = line.strip()
+        line = beautifulLine(line)
+        f1.write(line + "\n")
 
-    # Extract the arguments
-    for sArg in sLine.split("&"):
-        if sArg.startswith("arg1="):
-            tData["arg1"] = sArg[5:]
-        elif sArg.startswith("arg2="):
-            tData["arg2"] = sArg[5:]
-        elif sArg.startswith("arg3="):
-            tData["arg3"] = sArg[5:]
+with open("args.txt", "r") as f1:
+    for line in f1:
+        line = line.strip()
+        if not line:
+            continue  # Passer les lignes vides
 
-# Fichiers locaux (si besoin d'analyser plusieurs fichiers en parallèle)
-files = ["file1.txt", "file2.txt", "file3.txt"]
+        sArg1, sArg2, sArg3 = "", "", ""
+        for part in line.split("&"):
+            if part.startswith("arg1="):
+                sArg1 = part[5:]  # Supprimer 'arg1='
+            elif part.startswith("arg2="):
+                sArg2 = part[5:]  # Supprimer 'arg2='
+            elif part.startswith("arg3="):
+                sArg3 = part[5:]  # Supprimer 'arg3='
 
-# Liste pour stocker les données combinées
-data_lines = []
+        tDataArg1.append(sArg1)
+        tDataArg2.append(sArg2)
+        tDataArg3.append(sArg3)
 
-try:
-    with open(files[0], "r") as f1, open(files[1], "r") as f2, open(files[2], "r") as f3:
-        for line1, line2, line3 in zip_longest(f1, f2, f3, fillvalue=""):
-            combined_line = cleanData((line1 or "").strip() + (line2 or "").strip() + (line3 or "").strip())
-            data_lines.append(combined_line)
-except FileNotFoundError:
-    # Si les fichiers locaux ne sont pas utilisés, charger les données depuis l'URL
-    print("Traitement à partir des journaux téléchargés...")
-    data_lines = [cleanData(line) for line in response.text.split("\n")]
-# Concatenate the arguments
-sFullData = tData["arg1"] + tData["arg2"] + tData["arg3"]
+# Combiner les données des arguments
+tDataFile = []
+for sArg1, sArg2, sArg3 in zip_longest(tDataArg1, tDataArg2, tDataArg3, fillvalue=""):
 
-# Corriger le padding des données
-while len(sFullData) % 4 != 0:
-    sFullData += "="
+    sFullDataLine = clean_data((sArg1 or "").strip() + (sArg2 or "").strip() + (sArg3 or "").strip())
+    tDataFile.append(sFullDataLine)
 
-# Vérifications des données avant le décodage
-print("Taille des données concaténées :", len(sFullData))
-print("Premiers 200 caractères des données concaténées :", sFullData[:200])
+print("Taille des données concaténées :", len(tDataFile))
+print("Premiers 200 caractères des données concaténées :", "".join(tDataFile)[:200])
+sFullData = "".join(tDataFile)
+sFullData = fix_padding(sFullData)
 
 # Décoder les données en Base64
 try:
-    image_data = base64.b64decode(sFullData, validate=True)
-    print(f"Taille des données décodées : {len(image_data)} octets")
+    fImageData = base64.b64decode(sFullData, validate=True) # validate=True : Vérifie si les données sont valides
+    print(f"Taille des données décodées : {len(fImageData)} octets")
 except Exception as e:
     print("Erreur de décodage des données :", e)
     exit()
 
-# Écrire l'image dans un fichier
-with open("image.png", "wb") as img_file:
-    img_file.write(image_data)
-print(f"Image reconstruite et enregistrée sous : image.png")
+
+output_image = "image.png"
+try:
+    with open(output_image, "wb") as img_file:
+        img_file.write(fImageData)
+    print(f"Image reconstruite et enregistrée sous : {output_image}")
+except Exception as e:
+    print("Erreur lors de l'écriture du fichier :", e)
