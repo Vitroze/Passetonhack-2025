@@ -1,13 +1,11 @@
-import socket
 from Crypto.PublicKey import RSA
-from Crypto.Util.number import long_to_bytes
+from Crypto.Signature import pkcs1_15
+from Crypto.Hash import SHA256
+import binascii
+import pyperclip
 
-# Adresse et port du serveur cible
-SERVER_IP = "127.0.0.1"
-SERVER_PORT = 12345
-
-# Clé publique extraite du serveur
-PUBKEY = """\
+# Clé publique du serveur
+PUBKEY = '''\
 -----BEGIN PUBLIC KEY-----
 MIICIDANBgkqhkiG9w0BAQEFAAOCAg0AMIICCAKCAgEAr1i24dJXtg5bHUOY4Kkv
 oSDkjSVJfjsWwQcfGuNpXBg3rUpcIxQhJTfdmXSaXCNhfxUWO2ZJmIUBAh0ACgf+
@@ -22,34 +20,23 @@ uRQOy2JuPv58A56oesK8c0+3adGy5QFicEmNMbWLfYveRc9wJ3UrWi1FOkfknIf/
 FINKg3tMKNNuYfgqPH3cDXW2Q7HGrtw/mxksjTbJfxCRv5bNEFEk3px9RubRnfRd
 5hdxo2NKbskEXw5VPDiZyA0CAQM=
 -----END PUBLIC KEY-----
-"""
+'''
 
 # Charger la clé publique
 key = RSA.import_key(PUBKEY)
 
+# Message à signer (exemple : challenge du serveur)
+message = input("Entrez le challenge reçu du serveur : ")
 
-def forge_signature(challenge):
-    """
-    Forge une signature ASN.1 pour contourner la validation.
-    """
-    # Construire une structure ASN.1 invalide mais acceptable
-    hash_len = 32  # Taille de SHA256
-    fake_asn1 = b'\x30' + bytes([0x2e + hash_len]) + b'\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x01\x05\x00' + \
-                b'\x04' + bytes([hash_len]) + b'\x00' * hash_len
+# Calculer le hachage du message
+msg_hash = SHA256.new(message.encode())
 
-    # Représenter la structure comme un entier pour simuler une signature
-    fake_sig_int = int.from_bytes(fake_asn1, 'big')
-    forged_sig_int = pow(fake_sig_int, key.e, key.n)
+fake_signature = (int.from_bytes(msg_hash.digest(), byteorder='big') ** key.e % key.n).to_bytes(key.size_in_bytes(), byteorder='big')
 
-    # Retourner la signature sous forme d'octets
-    return long_to_bytes(forged_sig_int, key.size_in_bytes())
+# Convertir la fausse signature en format hexadécimal
+fake_signature_hex = binascii.hexlify(fake_signature).decode()
 
-challenge = input("Entrez le challenge : ")
-forged_signature = forge_signature(challenge)
-hex_signature = forged_signature.hex()
-print(f"Signature forgée : {hex_signature}")
+print(f"Fausse signature générée en hexadécimal : {fake_signature_hex}")
 
-# Copier la signature forgée dans le presse-papiers
-import pyperclip
-pyperclip.copy(hex_signature)
-print("Signature copiée dans le presse-papiers.")
+# Copier la fausse signature dans le presse-papiers
+pyperclip.copy(fake_signature_hex)

@@ -50,38 +50,45 @@ except FileNotFoundError:
     flag = 'flag{test}'
 
 
-def verify_signature(msg: bytes, signature: bytes) -> bool:
-    try:
-        if len(signature) != key.size_in_bytes():
-            print("Invalid signature length")
-            return False
+    def verify_signature(msg: bytes, signature: bytes) -> bool:
+        try:
+            print("=============================")
+            print(len(signature), key.size_in_bytes())
+            if len(signature) != key.size_in_bytes():
+                print("Invalid signature length")
+                return False
+    
+            print(1, msg)
+            msg_hash = SHA256.new(msg)
 
-        print(1)
-        msg_hash = SHA256.new(msg)
-        print(2)
-        asn1_sig = (int.from_bytes(signature) ** key.e).to_bytes(key.size_in_bytes())
-        print(3)
-        # Search for begining of ASN1 in PKCS #1 v1.5 signature
-        nul_byte = asn1_sig.find(b'\x00', 1)
-        print(4)
-        sig, _ = decode(asn1_sig[nul_byte + 1:], asn1Spec=Sequence())
-        print(5)
-        digest_algo = sig[0][0]
-        print(6)
-        if msg_hash.oid != str(digest_algo):
-            logger.warning('Bad hash OID (expected: %s, got: %s)', msg_hash.oid, str(digest_algo))
-            return False
+            print(msg_hash.oid, msg_hash)
+            print(2)
+            print(len(signature))
+            asn1_sig = (int.from_bytes(signature) ** key.e).to_bytes(key.size_in_bytes())
+            print(3, {asn1_sig.hex()})
+            # Search for begining of ASN1 in PKCS #1 v1.5 signature
+            nul_byte = asn1_sig.find(b'\x00', 1)
+            print(4, nul_byte)
+            print(asn1_sig[nul_byte + 1:])
+            sig, _ = decode(asn1_sig[nul_byte + 1:], asn1Spec=Sequence())
+            print(5)
+            digest_algo = sig[0][0]
+            print(6)
+            if msg_hash.oid != str(digest_algo):
+                logger.warning('Bad hash OID (expected: %s, got: %s)', msg_hash.oid, str(digest_algo))
+                return False
 
-        print(7)
-        received_hash = bytes(sig[1])
-        if len(received_hash) != msg_hash.digest_size:
+            print(7)
+            received_hash = bytes(sig[1])
+            if len(received_hash) != msg_hash.digest_size:
+                return False
+            same = 0
+            for a, b in zip(received_hash, msg_hash.digest()):
+                same |= a ^ b
+            return same == 0
+        except (IndexError, ValueError, TypeError) as e:
+            print("Error", e)
             return False
-        same = 0
-        for a, b in zip(received_hash, msg_hash.digest()):
-            same |= a ^ b
-        return same == 0
-    except (IndexError, ValueError, TypeError):
-        return False
 
 
 def needs_auth(func):
